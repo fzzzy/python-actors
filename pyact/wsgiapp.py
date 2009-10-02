@@ -16,10 +16,11 @@ class EvalActor(actor.Actor):
         try:
             exec body in {
                 'actor_id': self.actor_id,
+                'address': self.address,
                 'receive': self.receive,
                 'cooperate': self.cooperate,
                 'sleep': self.sleep,
-                'spawn_code': spawn_code}
+                'spawn_code': spawn_code}, vars(self)
         except:
             traceback.print_exc()
 
@@ -69,8 +70,14 @@ class ActorApplication(object):
             if old_actor is None:
                 start_response('404 Not Found', [('Content-type', 'text/plain')])
                 return "Not Found\n"
-            start_response('200 OK', [('Content-type', 'text/plain')])
-            return str(old_actor)
+            start_response('200 OK', [('Content-type', 'application/json')])
+            local_address = 'http://%s/' % (env['HTTP_HOST'], )
+            def handle_address(obj):
+                if isinstance(obj, actor.Address):
+                    return {'address': local_address + obj.actor_id}
+                raise TypeError(obj)
+            to_dump = dict([(x, y) for (x, y) in vars(old_actor).items() if not x.startswith('_')])
+            return simplejson.dumps(to_dump, default=handle_address) + '\n'
 
 
 app = ActorApplication()

@@ -142,6 +142,10 @@ class Address(object):
             raise DeadActor()
         return actor
 
+    @property
+    def actor_id(self):
+        return self._actor.actor_id
+
     def link(self, trap_exit=True):
         """Link the current Actor to the Actor at this address. If the linked
         Actor has an exception or exits, a message will be cast to the current
@@ -248,6 +252,8 @@ class Actor(api.Greenlet):
 
     all_actors = {}
 
+    actor_id = property(lambda self: self._actor_id)
+
     def __init__(self, run=None):
         api.Greenlet.__init__(self, parent=api.get_hub().greenlet)
 
@@ -256,7 +262,7 @@ class Actor(api.Greenlet):
         else:
             self._to_run = lambda *args, **kw: run(self.receive, *args, **kw)
 
-        self.actor_id = str(uuid.uuid1())
+        self._actor_id = str(uuid.uuid1())
         self.all_actors[self.actor_id] = self
 
     #######
@@ -267,7 +273,7 @@ class Actor(api.Greenlet):
         """Change this actor's public name on this server.
         """
         del self.all_actors[self.actor_id]
-        self.actor_id = name
+        self._actor_id = name
         self.all_actors[name] = self
 
     def receive(self, *patterns):
