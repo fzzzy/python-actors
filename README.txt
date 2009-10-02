@@ -25,7 +25,7 @@ Why Use Actors?
 	* Makes It Easier to Build Fault Tolerant Distributed Systems
 
 How Are Actors Implemented in Python Actors?
-=======================================
+============================================
 
 Use Eventlet's Green Threads to Implement Processes
 --------------------------------------------------------------------------------
