@@ -54,6 +54,14 @@ class DeadActor(ActorError):
     pass
 
 
+class RemoteAttributeError(ActorError, AttributeError):
+    pass
+
+
+class RemoteException(ActorError):
+    pass
+
+
 def is_actor_type(obj):
     """Return True if obj is a subclass of Actor, False if not.
     """
@@ -115,6 +123,7 @@ def spawn_link(spawnable, *args, **kw):
     return spawnable.address
 
 
+
 class Address(object):
     """An Address is a reference to another Actor.  Any Actor which has an
     Address can asynchronously put a message in that Actor's mailbox. This is
@@ -122,11 +131,13 @@ class Address(object):
     use "call" instead.
     """
     def __init__(self, actor):
-        self._actor = weakref.ref(actor)
+        self.__actor = weakref.ref(actor)
 
     @property
-    def actor(self):
-        actor = self._actor()
+    def _actor(self):
+        """This will be inaccessible to Python code in the C implementation.
+        """
+        actor = self.__actor()
         if actor is None:
             raise DeadActor()
         return actor
@@ -136,47 +147,62 @@ class Address(object):
         Actor has an exception or exits, a message will be cast to the current
         Actor containing details about the exception or return result.
         """
-        self.actor.add_link(api.getcurrent().address, trap_exit=trap_exit)
+        self._actor.add_link(api.getcurrent().address, trap_exit=trap_exit)
 
     def cast(self, message):
         """Send a message to the Actor this object addresses.
         """
         ## TODO: Copy message or come up with some way of "freezing" message
         ## so that actors do not share mutable state.
-        self.actor._cast(message)
+        self._actor._cast(message)
 
-    def call(self, message, timeout=None):
+    def call(self, method, message, timeout=None):
         """Send a message to the Actor this object addresses.
         Wait for a result. If a timeout in seconds is passed, raise
         api.TimeoutError if no result is returned in less than the timeout.
+        
+        This could have nicer syntax somehow to make it look like an actual method call.
         """
         message_id = str(uuid.uuid1())
         my_address = api.getcurrent().address
-        self.actor._cast(
-            {'call': message_id, 'address': my_address, 'message': message})
+        self._actor._cast(
+            {'call': message_id, 'method': method, 'address': my_address, 'message': message})
         if timeout is None:
             cancel = None
         else:
             ## Raise any TimeoutError to the caller so they can handle it
             cancel = api.exc_after(timeout, api.TimeoutError)
 
-        pattern, response = api.getcurrent().receive({'response': message_id, 'message': object})
+        RSP = {'response': message_id, 'message': object}
+        EXC = {'response': message_id, 'exception': object}
+        INV = {'response': message_id, 'invalid_method': str}
+
+        pattern, response = api.getcurrent().receive(RSP, EXC, INV)
 
         if cancel is not None:
             cancel.cancel()
 
+        if pattern is INV:
+            raise RemoteAttributeError(method)
+        elif pattern is EXC:
+            raise RemoteException(response)
         return response['message']
 
     def wait(self):
         """Wait for the Actor at this Address to finish, and return it's result.
         """
-        return self.actor._exit_event.wait()
+        return self._actor._exit_event.wait()
 
     def kill(self):
         """Violently kill the Actor at this Address. Any other Actor which has
         called wait on this Address will get a Killed exception.
         """
-        api.kill(self.actor, Killed)
+        api.kill(self._actor, Killed)
+
+
+CALL_PATTERN = {'call': str, 'method': str, 'address': Address, 'message': object}
+RESPONSE_PATTERN = {'response': str, 'message': object}
+INVALID_METHOD_PATTERN = {'response': str, 'invalid_method': str}
 
 
 def lazy_property(property_name, property_factory, doc=None):
@@ -311,6 +337,47 @@ class Actor(api.Greenlet):
         self._mailbox.append(message)
         if self._waiting:
             api.call_after_global(0, self.switch)
+
+
+class Server(Actor):
+    """An actor which responds to the call protocol by looking for the
+    specified method and calling it.
+
+    Also, Server provides start and stop methods which can be overridden
+    to customize setup.
+    """
+    def start(self, *args, **kw):
+        """Override to be notified when the server starts.
+        """
+        pass
+
+    def stop(self, *args, **kw):
+        """Override to be notified when the server stops.
+        """
+        pass
+
+    def main(self, *args, **kw):
+        """Implement the actor main loop by waiting forever for messages.
+        
+        Do not override.
+        """
+        self.start(*args, **kw)
+        try:
+            while True:
+                pattern, message = self.receive(CALL_PATTERN)
+                address = message['address']
+                method = getattr(self, message['method'], None)
+                if method is None:
+                    address.cast({'response': message['call'], 'invalid_method': message['method']})
+                    continue
+                try:
+                    result = method(message['message'])
+                    address.cast({'response': message['call'], 'message': result})
+                except Exception, e:
+                    formatted = exc.format_exc()
+                    address.cast({'response': message['call'], 'exception': formatted})
+        finally:
+            self.stop(*args, **kw)
 
 
 class Gather(Actor):

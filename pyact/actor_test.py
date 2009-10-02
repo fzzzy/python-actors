@@ -125,19 +125,19 @@ class TestActor(unittest.TestCase):
         class CallChild(actor.Actor):
             def main(self):
                 pattern, message = self.receive(
-                    {'call': str, 'address': object, 'message': object})
+                    {'call': str, 'address': object, 'method': str, 'message': object})
                 message['address'].cast(
                     {'response': message['call'], 'message': 'Hi There'})
 
         class CallParent(actor.Actor):
             def main(self):
-                return actor.spawn(CallChild).call({})
+                return actor.spawn(CallChild).call('method', {})
 
         self.assertEquals(actor.spawn(CallParent).wait(), "Hi There")
 
         class TimeoutCallParent(actor.Actor):
             def main(self):
-                return actor.spawn(CallChild).call({}, 1)
+                return actor.spawn(CallChild).call('method', {}, 1)
 
         self.assertEquals(actor.spawn(TimeoutCallParent).wait(), "Hi There")
 
@@ -154,7 +154,7 @@ class TestActor(unittest.TestCase):
         
         class TimeoutParent(actor.Actor):
             def main(self):
-                return actor.spawn(TimeoutChild).call({}, timeout=0.1)
+                return actor.spawn(TimeoutChild).call('method', {}, timeout=0.1)
 
         self.assertRaises(api.TimeoutError, actor.spawn(TimeoutParent).wait)
 
@@ -186,7 +186,7 @@ class TestActor(unittest.TestCase):
             def main(self):
                 address = actor.spawn(forever)
                 try:
-                    address.call({}, 0.1)
+                    address.call('method', {}, 0.1)
                 except api.TimeoutError:
                     pass
 
@@ -216,6 +216,75 @@ class TestActor(unittest.TestCase):
         result2 = [x.get('exit') for x in result2]
         self.assertEquals([1,2,3], result1)
         self.assertEquals([1,2,3], result2)
+
+
+THE_RESULT = "This is the result"
+
+
+class TestServer(unittest.TestCase):
+	def test_server(self):
+		class SimpleServer(actor.Server):
+			def foo(self, message):
+				return THE_RESULT
+
+		class SimpleClient(actor.Actor):
+			def main(self):
+				server = SimpleServer.spawn()
+				return server.call('foo', None)
+
+		cancel = api.exc_after(1, api.TimeoutError)
+		result = SimpleClient.spawn().wait()
+
+		self.assertEquals(result, THE_RESULT)
+
+	def test_exception(self):
+		class SimpleServer(actor.Server):
+			def foo(self, message):
+				raise RuntimeError("Exception!")
+
+		class SimpleClient(actor.Actor):
+			def main(self):
+				server = SimpleServer.spawn()
+				return server.call('foo', None)
+
+		self.assertRaises(actor.RemoteException, SimpleClient.spawn().wait)
+
+	def test_bad_method_name(self):
+		class SimpleServer(actor.Server):
+			def foo(self, message):
+				return THE_RESULT
+
+		class SimpleClient(actor.Actor):
+			def main(self):
+				server = SimpleServer.spawn()
+				return server.call('bar', None)
+
+		self.assertRaises(actor.RemoteAttributeError, SimpleClient.spawn().wait)
+
+	def test_start_stop(self):
+		mutate_me = {}
+		class SimpleServer(actor.Server):
+			def start(self):
+				mutate_me['start'] = True
+
+			def foo(self, message):
+				mutate_me['foo'] = True
+
+			def stop(self):
+				mutate_me['stop'] = True
+
+		class SimpleClient(actor.Actor):
+			def main(self):
+				server = SimpleServer.spawn()
+				server.call('foo', None)
+				server.kill()
+
+		SimpleClient.spawn().wait()
+
+		self.assertEqual(mutate_me.get('start'), True)
+		self.assertEqual(mutate_me.get('foo'), True)
+		self.assertEqual(mutate_me.get('stop'), True)
+
 
 if __name__ == '__main__':
     unittest.main()
