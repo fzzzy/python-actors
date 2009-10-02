@@ -146,6 +146,12 @@ class Address(object):
     def __init__(self, actor):
         self.__actor = weakref.ref(actor)
 
+    @staticmethod
+    def lookup(name):
+        """Return the Address of an Actor given the actor_id as a string.
+        """
+        return Actor.all_actors[name].address
+
     @property
     def _actor(self):
         """This will be inaccessible to Python code in the C implementation.

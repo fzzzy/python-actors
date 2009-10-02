@@ -20,6 +20,7 @@ class EvalActor(actor.Actor):
                 'receive': self.receive,
                 'cooperate': self.cooperate,
                 'sleep': self.sleep,
+                'lookup': actor.Address.lookup,
                 'spawn_code': spawn_code}, vars(self)
         except:
             traceback.print_exc()
