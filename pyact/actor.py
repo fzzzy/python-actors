@@ -246,6 +246,8 @@ class Actor(api.Greenlet):
     spawn = classmethod(spawn)
     spawn_link = classmethod(spawn_link)
 
+    all_actors = {}
+
     def __init__(self, run=None):
         api.Greenlet.__init__(self, parent=api.get_hub().greenlet)
 
@@ -254,9 +256,19 @@ class Actor(api.Greenlet):
         else:
             self._to_run = lambda *args, **kw: run(self.receive, *args, **kw)
 
+        self.actor_id = str(uuid.uuid1())
+        self.all_actors[self.actor_id] = self
+
     #######
     ## Methods for general use
     #######
+
+    def rename(self, name):
+        """Change this actor's public name on this server.
+        """
+        del self.all_actors[self.actor_id]
+        self.actor_id = name
+        self.all_actors[name] = self
 
     def receive(self, *patterns):
         """Select a message out of this Actor's mailbox. If patterns
@@ -297,6 +309,12 @@ class Actor(api.Greenlet):
         """
         raise NotImplementedError("Implement in subclass.")
 
+    def cooperate(self):
+        self.sleep(0)
+
+    def sleep(self, amount):
+        api.sleep(amount)
+
     #######
     ## Implementation details
     #######
@@ -328,6 +346,7 @@ class Actor(api.Greenlet):
             self._exit_event.send_exception(*exc_info)
         for link in self._exit_links:
             link.cast({'address': self.address, 'exit': result})
+        self.all_actors.pop(self.actor_id)
 
     def _cast(self, message):
         """For internal use.
