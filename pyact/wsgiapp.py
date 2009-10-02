@@ -43,7 +43,12 @@ class ActorApplication(object):
                 return "Not Found\n"
             try:
                 body = env['wsgi.input'].read(int(env['CONTENT_LENGTH']))
-                msg = simplejson.loads(body)
+                local_address = 'http://%s/' % (env['HTTP_HOST'], )
+                def generate_address(obj):
+                    if obj.keys() == ['address'] and obj['address'].startswith(local_address):
+                        return actors.generate_address({'address': obj['address'][len(local_address):]})
+                    return obj
+                msg = simplejson.loads(body, generate_address)
             except Exception, e:
                 traceback.print_exc()
                 start_response('406 Not Acceptable', [('Content-type', 'text/plain')])

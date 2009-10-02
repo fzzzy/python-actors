@@ -24,6 +24,8 @@ import traceback
 import uuid
 import weakref
 
+import simplejson
+
 from eventlet import api
 from eventlet import coros
 
@@ -123,6 +125,17 @@ def spawn_link(spawnable, *args, **kw):
     return spawnable.address
 
 
+def handle_address(obj):
+    if isinstance(obj, Address):
+        return {'address': obj.actor_id}
+    raise TypeError(obj)
+
+
+def generate_address(obj):
+    if obj.keys() == ['address']:
+        return Actor.all_actors[obj['address']].address
+    return obj
+
 
 class Address(object):
     """An Address is a reference to another Actor.  Any Actor which has an
@@ -158,7 +171,7 @@ class Address(object):
         """
         ## TODO: Copy message or come up with some way of "freezing" message
         ## so that actors do not share mutable state.
-        self._actor._cast(message)
+        self._actor._cast(simplejson.dumps(message, default=handle_address))
 
     def call(self, method, message, timeout=None):
         """Send a message to the Actor this object addresses.
@@ -170,7 +183,10 @@ class Address(object):
         message_id = str(uuid.uuid1())
         my_address = api.getcurrent().address
         self._actor._cast(
-            {'call': message_id, 'method': method, 'address': my_address, 'message': message})
+            simplejson.dumps(
+                {'call': message_id, 'method': method,
+                'address': my_address, 'message': message},
+            default=handle_address))
         if timeout is None:
             cancel = None
         else:
@@ -359,7 +375,7 @@ class Actor(api.Greenlet):
         
         Address uses this to insert a message into this Actor's mailbox.
         """
-        self._mailbox.append(message)
+        self._mailbox.append(simplejson.loads(message, object_hook=generate_address))
         if self._waiting:
             api.call_after_global(0, self.switch)
 
