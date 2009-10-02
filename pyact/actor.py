@@ -21,6 +21,7 @@ THE SOFTWARE.
 
 import sys
 import traceback
+import urlparse
 import uuid
 import weakref
 
@@ -28,6 +29,7 @@ import simplejson
 
 from eventlet import api
 from eventlet import coros
+from eventlet.green import httplib
 
 from pyact import exc
 from pyact import shape
@@ -125,6 +127,34 @@ def spawn_link(spawnable, *args, **kw):
     return spawnable.address
 
 
+def connect(url):
+    parsed = urlparse.urlparse(url)
+    if parsed.scheme == 'http':
+        klass = httplib.HTTPConnection
+    elif parsed.scheme == 'https':
+        klass = httplib.HTTPSConnection
+    else:
+        raise RuntimeError("Unsupported Scheme: %r" % (parsed.scheme, ))
+    host = parsed.netloc
+    port = None
+    if ':' in host:
+        host, port = host.split(':', 1)
+        port = int(port)
+    return parsed, klass(host, port)
+
+
+def spawn_remote(url, code_string):
+    """Run some code in a remote process. Returns the Address of the
+    remote Actor.
+    """
+    parsed, conn = connect(url)
+    conn.request('PUT', parsed.path, code_string)
+    resp = conn.getresponse()
+    if resp.status == 202:
+        return RemoteAddress(url)
+    raise RuntimeError("Could not spawn remote Actor.")
+
+
 def handle_address(obj):
     if isinstance(obj, Address):
         return {'address': obj.actor_id}
@@ -188,11 +218,9 @@ class Address(object):
         """
         message_id = str(uuid.uuid1())
         my_address = api.getcurrent().address
-        self._actor._cast(
-            simplejson.dumps(
+        self.cast(
                 {'call': message_id, 'method': method,
-                'address': my_address, 'message': message},
-            default=handle_address))
+                'address': my_address, 'message': message})
         if timeout is None:
             cancel = None
         else:
@@ -224,6 +252,43 @@ class Address(object):
         called wait on this Address will get a Killed exception.
         """
         api.kill(self._actor, Killed)
+
+
+class RemoteAddress(Address):
+    def __init__(self, address):
+        self._address = address
+
+    @staticmethod
+    def lookup(url):
+        if url.startswith('http://') or url.startswith('https://'):
+            parsed, conn = connect(url)
+            conn.request('HEAD', parsed.path)
+            resp = conn.getresponse()
+            if resp.status != 404:
+                return RemoteAddress(url)
+            raise KeyError(url)
+        return Actor.lookup(url)
+
+    @property
+    def actor_id(self):
+        return self._address
+
+    def cast(self, message):
+        parsed, conn = connect(self._address)
+        ## TODO how to get the address of the local http server? This does not give fully
+        ## qualified return addresses
+        conn.request('POST', parsed.path, simplejson.dumps(message, default=handle_address))
+        resp = conn.getresponse()
+
+    def kill(self):
+        parsed, conn = connect(self._address)
+        conn.request('DELETE', parsed.path)
+        resp = conn.getresponse()
+
+    def wait(self):
+        raise NotImplementedError(
+            "Can't wait on a RemoteAddress yet. "
+            "Need some sort of COMET protocol to implement this?")
 
 
 CALL_PATTERN = {'call': str, 'method': str, 'address': Address, 'message': object}

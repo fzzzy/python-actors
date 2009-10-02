@@ -20,8 +20,9 @@ class EvalActor(actor.Actor):
                 'receive': self.receive,
                 'cooperate': self.cooperate,
                 'sleep': self.sleep,
-                'lookup': actor.Address.lookup,
-                'spawn_code': spawn_code}, vars(self)
+                'lookup': actor.RemoteAddress.lookup,
+                'spawn_code': spawn_code,
+                'spawn_remote': actor.spawn_remote}, vars(self)
         except:
             traceback.print_exc()
 
@@ -47,9 +48,9 @@ class ActorApplication(object):
                 local_address = 'http://%s/' % (env['HTTP_HOST'], )
                 def generate_address(obj):
                     if obj.keys() == ['address'] and obj['address'].startswith(local_address):
-                        return actors.generate_address({'address': obj['address'][len(local_address):]})
+                        return actor.generate_address({'address': obj['address'][len(local_address):]})
                     return obj
-                msg = simplejson.loads(body, generate_address)
+                msg = simplejson.loads(body, object_hook=generate_address)
             except Exception, e:
                 traceback.print_exc()
                 start_response('406 Not Acceptable', [('Content-type', 'text/plain')])
@@ -65,13 +66,20 @@ class ActorApplication(object):
             old_actor.address.kill()
             start_response('200 OK', [('Content-type', 'text/plain')])
             return '\n'
+        elif method == 'HEAD':
+            old_actor = actor.Actor.all_actors.get(path)
+            if old_actor is None:
+                start_response('404 Not Found', [('Content-type', 'text/plain')])
+                return "\n"
+            start_response('200 OK', [('Content-type', 'application/json')])
+            return "\n"
         elif method == 'GET':
             if not path:
                 start_response('200 OK', [('Content-type', 'text/plain')])
                 return 'index\n'
             elif path == 'some-js-file.js':
                 start_response('200 OK', [('Content-type', 'text/plain')])
-                return 'some-js-file\n'            
+                return 'some-js-file\n'
             old_actor = actor.Actor.all_actors.get(path)
             if old_actor is None:
                 start_response('404 Not Found', [('Content-type', 'text/plain')])
