@@ -25,10 +25,16 @@ import urlparse
 import uuid
 import weakref
 
-import simplejson
+try:
+    import simplejson as json
+except ImportError:
+    import json
+
+import eventlet
+from eventlet import hubs
+from eventlet import event
 
 from eventlet import api
-from eventlet import coros
 from eventlet.green import httplib
 
 from pyact import exc
@@ -37,7 +43,7 @@ from pyact import shape
 
 ## If set to true, an Actor will print out every exception, even if the parent
 ## handles the exception properly.
-NOISY_ACTORS = False
+NOISY_ACTORS = True
 
 
 class ActorError(RuntimeError):
@@ -92,7 +98,7 @@ def spawn(spawnable, *args, **kw):
         spawnable = Actor(spawnable)
 
     spawnable._args = (args, kw)
-    api.call_after_global(0, spawnable.switch)
+    eventlet.spawn_after(0, spawnable.switch)
     return spawnable.address
 
 
@@ -123,7 +129,7 @@ def spawn_link(spawnable, *args, **kw):
 
     spawnable._args = (args, kw)
     spawnable.add_link(api.getcurrent().address)
-    api.call_after_global(0, spawnable.switch)
+    eventlet.spawn_after(0, spawnable.switch)
     return spawnable.address
 
 
@@ -207,7 +213,7 @@ class Address(object):
         """
         ## TODO: Copy message or come up with some way of "freezing" message
         ## so that actors do not share mutable state.
-        self._actor._cast(simplejson.dumps(message, default=handle_address))
+        self._actor._cast(json.dumps(message, default=handle_address))
 
     def call(self, method, message, timeout=None):
         """Send a message to the Actor this object addresses.
@@ -277,7 +283,7 @@ class RemoteAddress(Address):
         parsed, conn = connect(self._address)
         ## TODO how to get the address of the local http server? This does not give fully
         ## qualified return addresses
-        conn.request('POST', parsed.path, simplejson.dumps(message, default=handle_address))
+        conn.request('POST', parsed.path, json.dumps(message, default=handle_address))
         resp = conn.getresponse()
 
     def kill(self):
@@ -326,7 +332,7 @@ class Actor(api.Greenlet):
     _mailbox = lazy_property('_p_mailbox', lambda self: [])
     _links = lazy_property('_p_links', lambda self: [])
     _exit_links = lazy_property('_p_exit_links', lambda self: [])
-    _exit_event = lazy_property('_p_exit_event', lambda self: coros.event())
+    _exit_event = lazy_property('_p_exit_event', lambda self: event.Event())
 
     address = lazy_property('_p_address', lambda self: Address(self),
         doc="""An Address is a reference to another Actor. See the Address
@@ -342,7 +348,7 @@ class Actor(api.Greenlet):
     actor_id = property(lambda self: self._actor_id)
 
     def __init__(self, run=None):
-        api.Greenlet.__init__(self, parent=api.get_hub().greenlet)
+        api.Greenlet.__init__(self, parent=hubs.get_hub().greenlet)
 
         if run is None:
             self._to_run = self.main
@@ -371,7 +377,7 @@ class Actor(api.Greenlet):
         if not patterns:
             if not self._mailbox:
                 self._waiting = True
-                api.get_hub().switch()
+                hubs.get_hub().switch()
             return {object: object}, self._mailbox.pop(0)
 
         while True:
@@ -382,7 +388,7 @@ class Actor(api.Greenlet):
                         return pattern, message
 
             self._waiting = True
-            api.get_hub().switch()
+            hubs.get_hub().switch()
 
     def add_link(self, address, trap_exit=True):
         """Link the Actor at the given Address to this Actor.
@@ -446,9 +452,9 @@ class Actor(api.Greenlet):
         
         Address uses this to insert a message into this Actor's mailbox.
         """
-        self._mailbox.append(simplejson.loads(message, object_hook=generate_address))
+        self._mailbox.append(json.loads(message, object_hook=generate_address))
         if self._waiting:
-            api.call_after_global(0, self.switch)
+            eventlet.spawn_after(0, self.switch)
 
 
 class Server(Actor):
