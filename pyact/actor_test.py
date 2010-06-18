@@ -20,10 +20,7 @@ THE SOFTWARE.
 """
 
 import unittest
-
-from eventlet import api
-from eventlet import coros
-
+import eventlet
 from pyact import actor
 
 
@@ -156,7 +153,7 @@ class TestActor(unittest.TestCase):
             def main(self):
                 return actor.spawn(TimeoutChild).call('method', {}, timeout=0.1)
 
-        self.assertRaises(api.TimeoutError, actor.spawn(TimeoutParent).wait)
+        self.assertRaises(eventlet.TimeoutError, actor.spawn(TimeoutParent).wait)
 
     def test_dead_actor(self):
         class DeadTest(actor.Actor):
@@ -172,7 +169,7 @@ class TestActor(unittest.TestCase):
             def main(self):
                 child = actor.spawn(foo)
                 child.link()
-                cancel = api.exc_after(0.1, api.TimeoutError)
+                cancel = eventlet.Timeout(0.1, eventlet.TimeoutError)
                 result = self.receive(
                     {'exit': object, 'address': object},
                     {'exception': object, 'address': object})
@@ -180,14 +177,14 @@ class TestActor(unittest.TestCase):
 
     def test_kill(self):
         def forever(receive):
-            api.sleep(5000)
+            eventlet.sleep(5000)
 
         class KillTest(actor.Actor):
             def main(self):
                 address = actor.spawn(forever)
                 try:
                     address.call('method', {}, 0.1)
-                except api.TimeoutError:
+                except eventlet.TimeoutError:
                     pass
 
                 address.kill()
@@ -208,7 +205,7 @@ class TestActor(unittest.TestCase):
                 result2 = list(actor.wait_all([foo, bar, baz]))
                 return result1, result2
 
-        cancel = api.exc_after(1, api.TimeoutError)
+        cancel = eventlet.Timeout(1, eventlet.TimeoutError)
         result1, result2 = actor.spawn(WaitAll).wait()
         cancel.cancel()
 
@@ -232,7 +229,7 @@ class TestServer(unittest.TestCase):
 				server = SimpleServer.spawn()
 				return server.call('foo', None)
 
-		cancel = api.exc_after(1, api.TimeoutError)
+		cancel = eventlet.Timeout(1, eventlet.TimeoutError)
 		result = SimpleClient.spawn().wait()
 
 		self.assertEquals(result, THE_RESULT)

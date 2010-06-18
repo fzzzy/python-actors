@@ -33,8 +33,8 @@ except ImportError:
 import eventlet
 from eventlet import hubs
 from eventlet import event
+from eventlet import greenlet
 
-from eventlet import api
 from eventlet.green import httplib
 
 from pyact import exc
@@ -103,7 +103,7 @@ def spawn(spawnable, *args, **kw):
 
 
 def spawn_link(spawnable, *args, **kw):
-    """Just like spawn, but call actor.add_link(api.getcurrent().address)
+    """Just like spawn, but call actor.add_link(eventlet.getcurrent().address)
     before returning the newly-created actor.
 
     The currently running Actor will be linked to the new actor. If an
@@ -128,7 +128,7 @@ def spawn_link(spawnable, *args, **kw):
         spawnable = Actor(spawnable)
 
     spawnable._args = (args, kw)
-    spawnable.add_link(api.getcurrent().address)
+    spawnable.add_link(eventlet.getcurrent().address)
     eventlet.spawn_after(0, spawnable.switch)
     return spawnable.address
 
@@ -206,7 +206,7 @@ class Address(object):
         Actor has an exception or exits, a message will be cast to the current
         Actor containing details about the exception or return result.
         """
-        self._actor.add_link(api.getcurrent().address, trap_exit=trap_exit)
+        self._actor.add_link(eventlet.getcurrent().address, trap_exit=trap_exit)
 
     def cast(self, message):
         """Send a message to the Actor this object addresses.
@@ -218,12 +218,12 @@ class Address(object):
     def call(self, method, message, timeout=None):
         """Send a message to the Actor this object addresses.
         Wait for a result. If a timeout in seconds is passed, raise
-        api.TimeoutError if no result is returned in less than the timeout.
+        eventlet.TimeoutError if no result is returned in less than the timeout.
         
         This could have nicer syntax somehow to make it look like an actual method call.
         """
         message_id = str(uuid.uuid1())
-        my_address = api.getcurrent().address
+        my_address = eventlet.getcurrent().address
         self.cast(
                 {'call': message_id, 'method': method,
                 'address': my_address, 'message': message})
@@ -231,13 +231,13 @@ class Address(object):
             cancel = None
         else:
             ## Raise any TimeoutError to the caller so they can handle it
-            cancel = api.exc_after(timeout, api.TimeoutError)
+            cancel = eventlet.Timeout(timeout, eventlet.TimeoutError)
 
         RSP = {'response': message_id, 'message': object}
         EXC = {'response': message_id, 'exception': object}
         INV = {'response': message_id, 'invalid_method': str}
 
-        pattern, response = api.getcurrent().receive(RSP, EXC, INV)
+        pattern, response = eventlet.getcurrent().receive(RSP, EXC, INV)
 
         if cancel is not None:
             cancel.cancel()
@@ -257,7 +257,7 @@ class Address(object):
         """Violently kill the Actor at this Address. Any other Actor which has
         called wait on this Address will get a Killed exception.
         """
-        api.kill(self._actor, Killed)
+        eventlet.kill(self._actor, Killed)
 
 
 class RemoteAddress(Address):
@@ -310,7 +310,7 @@ def lazy_property(property_name, property_factory, doc=None):
     return property(get)
 
 
-class Actor(api.Greenlet):
+class Actor(greenlet.greenlet):
     """An Actor is a Greenlet which has a mailbox.  Any other Actor which has
    the Address can asynchronously put messages in this mailbox.
 
@@ -348,7 +348,7 @@ class Actor(api.Greenlet):
     actor_id = property(lambda self: self._actor_id)
 
     def __init__(self, run=None):
-        api.Greenlet.__init__(self, parent=hubs.get_hub().greenlet)
+        greenlet.greenlet.__init__(self, parent=hubs.get_hub().greenlet)
 
         if run is None:
             self._to_run = self.main
@@ -412,7 +412,7 @@ class Actor(api.Greenlet):
         self.sleep(0)
 
     def sleep(self, amount):
-        api.sleep(amount)
+        eventlet.sleep(amount)
 
     #######
     ## Implementation details
