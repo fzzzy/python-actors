@@ -193,7 +193,7 @@ class Address(object):
         """This will be inaccessible to Python code in the C implementation.
         """
         actor = self.__actor()
-        if actor is None:
+        if actor is None or actor.dead:
             raise DeadActor()
         return actor
 

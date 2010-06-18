@@ -187,7 +187,7 @@ class TestActor(unittest.TestCase):
                 except eventlet.TimeoutError:
                     pass
 
-                address.kill()
+                eventlet.spawn_after(1, lambda : address.kill())
                 return address.wait()
 
         self.assertRaises(actor.Killed, actor.spawn(KillTest).wait)
