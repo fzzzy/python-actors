@@ -20,6 +20,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import sys
+
+PY_MAJOR_VERSION = sys.version_info[0]
+
 
 CONTAINER_TYPES = [dict, list, tuple, set]
 
@@ -49,6 +53,24 @@ def is_shaped(thing, shape):
 
 
 def is_shaped_exc(thing, shape):
+    if PY_MAJOR_VERSION==2:
+        #Python 2.x json module will decode str types
+        # as unicode. Unicode is actually what JSON spec
+        # uses as its 'str' type. 
+        #So for Python 2.x cast both things and shapes
+        # to unicode first before matching is performed.
+
+        # convert a str(thing) to a unicode(thing)
+        if type(thing) == str:
+            thing = unicode(thing)
+
+        # convert str(shape) into a unicode(shape)
+        if type(shape) == str:
+            shape = unicode(shape)
+        # if shape _is_ str, use unicode instead
+        elif shape == str:
+            shape = unicode
+            
     shape_type = type(shape)
     if type(shape) is object:
         return
