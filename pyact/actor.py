@@ -369,6 +369,21 @@ class Actor(greenlet.greenlet):
         self._actor_id = name
         self.all_actors[name] = self
 
+        
+    def _match_patterns(self,patterns):
+        """Internal method to match a list of patterns against
+        the mailbox. If message matches any of the patterns,
+        that message is removed from the mailbox and returned
+        along with the pattern it matched. If message doesn't
+        match any pattern then None,None is returned.
+        """
+        for i, message in enumerate(self._mailbox):
+            for pattern in patterns:
+                if shape.is_shaped(message, pattern):
+                    del self._mailbox[i]
+                    return pattern, message
+        return None,None
+        
     def receive(self, *patterns):
         """Select a message out of this Actor's mailbox. If patterns
         are given, only select messages which match these shapes.
@@ -381,14 +396,26 @@ class Actor(greenlet.greenlet):
             return {object: object}, self._mailbox.pop(0)
 
         while True:
-            for i, message in enumerate(self._mailbox):
-                for pattern in patterns:
-                    if shape.is_shaped(message, pattern):
-                        del self._mailbox[i]
-                        return pattern, message
-
+            matched_pat, matched_msg = self._match_patterns(patterns)
+            if matched_pat:
+                return matched_pat, matched_msg
             self._waiting = True
             hubs.get_hub().switch()
+
+    def receive_nowait(self, *patterns):
+        """Select a message out of this Actor's mailbox. If patterns
+        are given, only select messages which match these shapes.
+        Otherwise, select the next message. 
+
+        Message is selected without waiting. If no message matches any
+        of the given patterns, then (None,None) is return as (pattern,message).
+        """
+        if not patterns:
+            if self._mailbox:
+                return {object: object}, self._mailbox.pop(0)
+            else:
+                return None,None
+        return self._match_patterns(patterns)
 
     def add_link(self, address, trap_exit=True):
         """Link the Actor at the given Address to this Actor.

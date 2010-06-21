@@ -114,6 +114,37 @@ class TestActor(unittest.TestCase):
 
         result = actor.spawn(UnconditionalSupervisor).wait()
 
+    def test_receive_nowait(self):
+        """Assert that calling receive nowait returns None,None
+        immediatly if the mailbox is empty.
+        """
+        class ActiveActor(actor.Actor):
+            def main(self):
+                self.cycle = 0
+                while True:
+                    pat,msg = self.receive_nowait(actor.CALL_PATTERN)
+                    if pat and msg['method'] == 'get_cycle':
+                        msg['address'].cast({'response':msg['call'], 
+                                             'message':self.cycle})
+                    if pat and msg['method'] == 'die':
+                        msg['address'].cast({'response':msg['call'],
+                                             'message':None})
+                        return
+                    self.cycle+=1
+                    self.cooperate()
+        
+        class ActiveActorMonitor(actor.Actor):
+            def main(self):
+                activea = actor.spawn(ActiveActor)
+                cycle1 = activea.call('get_cycle', None)
+                self.sleep(0.001)
+                cycle2 = activea.call('get_cycle', None)
+                activea.call('die',None)
+                return cycle2 > cycle1
+
+        self.assertEquals(actor.spawn(ActiveActorMonitor).wait(), True)
+
+  
     def test_call(self):
         """Start an Actor that starts another Actor and then uses
         call on the Address. Assert that the parent gets a response
