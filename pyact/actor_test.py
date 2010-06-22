@@ -115,6 +115,23 @@ class TestActor(unittest.TestCase):
 
         result = actor.spawn(UnconditionalSupervisor).wait()
 
+    def test_cast_syntax_sugar(self):
+        """Test | as cast operator.
+        """
+        class Replier(actor.Actor):
+            def main(self):
+                pat,msg = self.receive({'addr':object})
+                reqaddr = msg['addr']
+                reqaddr | "quux"
+        class Requester(actor.Actor):
+            def main(self):
+                repladdr = Replier.spawn()
+                repladdr | {"addr":self.address}
+                pat,msg = self.receive(str)
+                return msg
+        result = Requester.spawn().wait()
+        self.assertEquals(result, "quux")
+
     def test_receive_nowait(self):
         """Assert that calling receive nowait returns None,None
         immediatly if the mailbox is empty.

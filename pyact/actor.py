@@ -219,6 +219,14 @@ class Address(object):
         ## so that actors do not share mutable state.
         self._actor._cast(json.dumps(message, default=handle_address))
 
+    def __or__(self, message):
+        """Use Erlang-y syntax (| instead of !) to send messages.
+               addr | msg  
+        is equivalent to:
+               addr.cast(msg)
+        """
+        self.cast(message)
+
     def call(self, method, message=None, timeout=None):
         """Send a message to the Actor this object addresses.
         Wait for a result. If a timeout in seconds is passed, raise
