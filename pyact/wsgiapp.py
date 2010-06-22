@@ -1,7 +1,5 @@
 
 import traceback
-import simplejson
-
 from pyact import actor
 
 
@@ -50,7 +48,7 @@ class ActorApplication(object):
                     if obj.keys() == ['address'] and obj['address'].startswith(local_address):
                         return actor.generate_address({'address': obj['address'][len(local_address):]})
                     return obj
-                msg = simplejson.loads(body, object_hook=generate_address)
+                msg = actor.json.loads(body, object_hook=generate_address)
             except Exception, e:
                 traceback.print_exc()
                 start_response('406 Not Acceptable', [('Content-type', 'text/plain')])
@@ -91,7 +89,7 @@ class ActorApplication(object):
                     return {'address': local_address + obj.actor_id}
                 raise TypeError(obj)
             to_dump = dict([(x, y) for (x, y) in vars(old_actor).items() if not x.startswith('_')])
-            return simplejson.dumps(to_dump, default=handle_address) + '\n'
+            return actor.json.dumps(to_dump, default=handle_address) + '\n'
 
 
 app = ActorApplication()
