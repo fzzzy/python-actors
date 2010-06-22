@@ -36,7 +36,7 @@ class TestShaped(unittest.TestCase):
         self.assertEquals(
             shape.is_shaped([1, 2, 3], [int]),
             True)
-
+        
     def test_not_shaped(self):
         self.assertRaises(
             shape.TypeMismatch,
@@ -50,6 +50,9 @@ class TestShaped(unittest.TestCase):
         self.assertEqual(
             shape.is_shaped(1, bool),
             False)
+        self.assertRaises(
+            shape.TypeMismatch,
+            shape.is_shaped_exc, {'hello': 'world'}, 5)
 
     def test_dict_shape(self):
         self.assertEquals(
