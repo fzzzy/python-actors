@@ -36,7 +36,31 @@ class TestShaped(unittest.TestCase):
         self.assertEquals(
             shape.is_shaped([1, 2, 3], [int]),
             True)
-
+        self.assertEqual(
+            shape.is_shaped(set([8,9]), set([int])),
+            True)
+        self.assertEqual(
+            shape.is_shaped({'a':'b','c':5},
+                            {'a':str,'c':int}),
+            True)
+        self.assertEqual(
+            shape.is_shaped((1,'a'),(int,str)),
+            True)
+        self.assertEqual(
+            shape.is_shaped(['x'],set([str])),
+            True),
+        self.assertEqual(
+            shape.is_shaped(['x'],set(['x'])),
+            True)
+        self.assertEqual(
+            shape.is_shaped(set(['x']), [str]),
+            True)
+        self.assertEqual(
+            shape.is_shaped(set(['x']), ['x']),
+            True)
+                            
+                            
+        
     def test_not_shaped(self):
         self.assertRaises(
             shape.TypeMismatch,
@@ -50,6 +74,28 @@ class TestShaped(unittest.TestCase):
         self.assertEqual(
             shape.is_shaped(1, bool),
             False)
+        self.assertRaises(
+            shape.TypeMismatch,
+            shape.is_shaped_exc, {'hello': 'world'}, 5)
+        self.assertEqual(
+            shape.is_shaped(1,2),
+            False)
+        self.assertEqual(
+            shape.is_shaped(str,"z"),
+            False)
+        self.assertEqual(
+            shape.is_shaped(7,['a','b']),
+            False)
+        self.assertEqual(
+            shape.is_shaped((1,2,3),(int,int)),
+            False)
+        self.assertEqual(
+            shape.is_shaped(1,{'a':100}),
+            False)
+        self.assertEqual(
+            shape.is_shaped([1,2,3],(int,int,int)),
+            False)
+        
 
     def test_dict_shape(self):
         self.assertEquals(
