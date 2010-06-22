@@ -72,12 +72,13 @@ def is_shaped_exc(thing, shape):
             shape = unicode
             
     shape_type = type(shape)
-    if type(shape) is object:
-        return
-    elif type(shape) in CONTAINER_TYPES:
-        shape_type = type(shape)
 
+    if shape_type is object:
+        return
+    elif shape_type in CONTAINER_TYPES:
         if shape_type is dict:
+            if not isinstance(thing, dict):
+                raise TypeMismatch("type %s is not a dict" % type(thing))
             for name in shape:
                 if name not in thing:
                     raise KeyMismatch(
@@ -87,29 +88,37 @@ def is_shaped_exc(thing, shape):
                 subtype = shape[name]
                 is_shaped_exc(subitem, subtype)
         elif shape_type in (list, set):
-            subtype = shape[0]
+            # use for x in container to work with sets 
+            for subtype in shape:
+                break
+            # subtype is now first element of shape container
+            if not isinstance(thing, (list,set)):
+                raise TypeMismatch("type %s is not a set or list" % type(thing))
             for subitem in thing:
                 is_shaped_exc(subitem, subtype)
         elif shape_type is tuple:
+            if not isinstance(thing, tuple):
+                raise TypeMismatch("type %s is not a tuple" % type(thing))
             if len(thing) != len(shape):
                 raise SizeMismatch(
                     "wrong number of items in %s (for shape %s); "
                     "expected %s items" % (
                     thing, shape, len(shape)))
-
             subitem_iter = iter(thing)
             for subtype in shape:
                 subitem = subitem_iter.next()
                 is_shaped_exc(subitem, subtype)
         return
-    elif type(thing) == shape_type:
+    elif shape_type == type(thing):
         if thing == shape:
             ## It's an exact match
             return
         raise ShapeMismatch("object %r does not match %r" % (thing, shape_type))
     else:
-        if not isinstance(thing, shape):
-            raise TypeMismatch("type %r does not match %r (%s)" % (
+        if isinstance(shape,type) and isinstance(thing,shape):
+            ## shape is a basic type and it matches with thing's type
+            return 
+        raise TypeMismatch("type %r does not match %r (%s)" % (
                 thing, shape_type, type(thing)))
 
 
