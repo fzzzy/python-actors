@@ -22,6 +22,7 @@ THE SOFTWARE.
 import unittest
 import eventlet
 from pyact import actor
+from pyact import exc
 
 
 EXCEPTION_MARKER = "Child had an exception"
@@ -136,10 +137,10 @@ class TestActor(unittest.TestCase):
         class ActiveActorMonitor(actor.Actor):
             def main(self):
                 activea = actor.spawn(ActiveActor)
-                cycle1 = activea.call('get_cycle', None)
+                cycle1 = activea.call('get_cycle')
                 self.sleep(0.001)
-                cycle2 = activea.call('get_cycle', None)
-                activea.call('die',None)
+                cycle2 = activea.call('get_cycle')
+                activea.call('die')
                 return cycle2 > cycle1
 
         self.assertEquals(actor.spawn(ActiveActorMonitor).wait(), True)
@@ -169,6 +170,54 @@ class TestActor(unittest.TestCase):
 
         self.assertEquals(actor.spawn(TimeoutCallParent).wait(), "Hi There")
 
+    def test_call_response_method(self):
+        """Start an Actor that starts another Actor and then uses
+        call on the Address. Response is send back using the response() method. 
+        Assert that the  parent gets a response from the child and returns it.
+        """
+        class CallChild(actor.Actor):
+            def main(self):
+                pat,msg = self.receive({'call':str, 'address':object,
+                                        'method':str, 'message':object})
+                if msg['method'] == 'method':
+                    self.respond(msg,'Hi There')
+        class CallParent(actor.Actor):
+            def main(self):
+                return actor.spawn(CallChild).call('method')
+        self.assertEquals(actor.spawn(CallParent).wait(), 'Hi There')
+
+    def test_call_invalid_method(self):
+        """Start an Actor that starts another Actor and then
+        uses call on the Address but using an invalid method. An
+        invalid method response should be returned.
+        """
+        class CallChild(actor.Actor):
+            def main(self):
+                pat,msg = self.receive(actor.CALL_PATTERN)
+                self.respond_invalid_method(msg,msg['method'])
+        class CallParent(actor.Actor):
+            def main(self):
+                return actor.spawn(CallChild).call('invalmeth')
+        self.assertRaises(actor.RemoteAttributeError, actor.spawn(CallParent).wait)
+        
+    def test_call_with_remote_exception(self):
+        """Start an Actor that starts another actor and calls a method
+        on it. The first actor will respond with an exception.
+        """
+        class CallChild(actor.Actor):
+            def main(self):
+                pat,msg = self.receive(actor.CALL_PATTERN)
+                try:
+                    raise ValueError("testexc")
+                except ValueError,e:
+                    formatted = exc.format_exc()
+                    self.respond_exception(msg, formatted)
+        class CallParent(actor.Actor):
+            def main(self):
+                return actor.spawn(CallChild).call('amethod')
+        self.assertRaises(actor.RemoteException, actor.spawn(CallParent).wait)
+        
+        
     def test_timeout(self):
         """Start an Actor that starts another Actor that accepts a call and
         never responds. The parent calls the child with a small timeout value.

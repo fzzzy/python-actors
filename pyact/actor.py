@@ -71,6 +71,10 @@ class RemoteAttributeError(ActorError, AttributeError):
 class RemoteException(ActorError):
     pass
 
+class InvalidCallMessage(ActorError):
+    """Message doesn't match call message shape.
+    """
+    pass
 
 def is_actor_type(obj):
     """Return True if obj is a subclass of Actor, False if not.
@@ -215,7 +219,7 @@ class Address(object):
         ## so that actors do not share mutable state.
         self._actor._cast(json.dumps(message, default=handle_address))
 
-    def call(self, method, message, timeout=None):
+    def call(self, method, message=None, timeout=None):
         """Send a message to the Actor this object addresses.
         Wait for a result. If a timeout in seconds is passed, raise
         eventlet.TimeoutError if no result is returned in less than the timeout.
@@ -300,7 +304,7 @@ class RemoteAddress(Address):
 CALL_PATTERN = {'call': str, 'method': str, 'address': Address, 'message': object}
 RESPONSE_PATTERN = {'response': str, 'message': object}
 INVALID_METHOD_PATTERN = {'response': str, 'invalid_method': str}
-
+EXCEPTION_PATTERN = {'response': str, 'exception':object}
 
 def lazy_property(property_name, property_factory, doc=None):
     def get(self):
@@ -417,6 +421,23 @@ class Actor(greenlet.greenlet):
                 return None,None
         return self._match_patterns(patterns)
 
+    def respond(self, orig_message, response=None):
+        if not shape.is_shaped(orig_message, CALL_PATTERN):
+            raise InvalidCallMessage(str(orig_message))
+        orig_message['address'].cast({'response':orig_message['call'],
+                                      'message':response})
+
+    def respond_invalid_method(self, orig_message, method):
+        if not shape.is_shaped(orig_message, CALL_PATTERN):
+            raise InvalidCallMessage(str(orig_message))
+        orig_message['address'].cast({'response':orig_message['call'],
+                                      'invalid_method':method})
+
+    def respond_exception(self, orig_message, exception):
+        if not shape.is_shaped(orig_message, CALL_PATTERN):
+            raise InvalidCallMessage(str(orig_message))
+        orig_message['address'].cast({'response':orig_message['call'],
+                                      'exception':exception})
     def add_link(self, address, trap_exit=True):
         """Link the Actor at the given Address to this Actor.
 
@@ -510,17 +531,15 @@ class Server(Actor):
         try:
             while True:
                 pattern, message = self.receive(CALL_PATTERN)
-                address = message['address']
                 method = getattr(self, message['method'], None)
                 if method is None:
-                    address.cast({'response': message['call'], 'invalid_method': message['method']})
+                    self.respond_invalid_method(message, message['method'])
                     continue
                 try:
-                    result = method(message['message'])
-                    address.cast({'response': message['call'], 'message': result})
+                    self.respond(message,  method(message['message']))
                 except Exception, e:
                     formatted = exc.format_exc()
-                    address.cast({'response': message['call'], 'exception': formatted})
+                    self.respond_exception(message, formatted)
         finally:
             self.stop(*args, **kw)
 
