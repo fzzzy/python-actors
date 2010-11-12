@@ -454,7 +454,7 @@ class Actor(greenlet.greenlet):
         """
         self._mailbox.append(json.loads(message, object_hook=generate_address))
         if self._waiting:
-            hub.schedule_call_global(0,self.switch)
+            hubs.get_hub().schedule_call_global(0,self.switch)
 
 
 class Server(Actor):
