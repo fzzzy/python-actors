@@ -203,6 +203,20 @@ class TestActor(unittest.TestCase):
                 return actor.spawn(CallChild).call('method')
         self.assertEquals(actor.spawn(CallParent).wait(), 'Hi There')
 
+    def test_call_getattr(self):
+        """Test addr.method(...) call pattern
+        """
+        class CallChild(actor.Actor):
+            def main(self):
+                pat,msg = self.receive({'call':str, 'address':object,
+                                        'method':str, 'message':object})
+                if msg['method'] == 'method':
+                    self.respond(msg,'my response')
+        class CallParent(actor.Actor):
+            def main(self):
+                return actor.spawn(CallChild).method()
+        self.assertEquals(actor.spawn(CallParent).wait(), 'my response')
+            
     def test_call_invalid_method(self):
         """Start an Actor that starts another Actor and then
         uses call on the Address but using an invalid method. An
@@ -310,6 +324,21 @@ class TestActor(unittest.TestCase):
         result2 = [x.get('exit') for x in result2]
         self.assertEquals([1,2,3], result1)
         self.assertEquals([1,2,3], result2)
+
+    def test_build_call_pattern(self):
+        
+        assert actor.build_call_pattern('meth1') == {'address': actor.Address,
+                                                     'call': str,
+                                                     'message': object,
+                                                     'method': 'meth1'}
+        
+        assert actor.build_call_pattern('meth2',int) == {'address': actor.Address,
+                                                         'call': str,
+                                                         'message': int,
+                                                         'method': 'meth2'}
+
+        
+                                                         
 
 
 THE_RESULT = "This is the result"

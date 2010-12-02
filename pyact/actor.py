@@ -260,6 +260,17 @@ class Address(object):
             raise RemoteException(response)
         return response['message']
 
+    def __getattr__(self,method):
+        """Support address.<method>(message,timout) call pattern.
+
+        For example:
+              addr.call('test') could be written as addr.test()
+              
+        """
+        print "getattr addr:",self.actor_id,"method",method
+        f = lambda message=None,timeout=None : self.call(method,message,timeout)
+        return f
+        
     def wait(self):
         """Wait for the Actor at this Address to finish, and return it's result.
         """
@@ -313,6 +324,12 @@ CALL_PATTERN = {'call': str, 'method': str, 'address': Address, 'message': objec
 RESPONSE_PATTERN = {'response': str, 'message': object}
 INVALID_METHOD_PATTERN = {'response': str, 'invalid_method': str}
 EXCEPTION_PATTERN = {'response': str, 'exception':object}
+
+def build_call_pattern(method,message=object):
+    call_pat = CALL_PATTERN.copy()
+    call_pat['method'] = method
+    call_pat['message'] = message
+    return call_pat
 
 def lazy_property(property_name, property_factory, doc=None):
     def get(self):
