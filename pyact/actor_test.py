@@ -133,14 +133,13 @@ class TestActor(unittest.TestCase):
         self.assertEquals(result, "quux")
 
     def test_receive_nowait(self):
-        """Assert that calling receive nowait returns None,None
-        immediatly if the mailbox is empty.
+        """Assert that calling receive with timeout = 0 works.
         """
         class ActiveActor(actor.Actor):
             def main(self):
                 self.cycle = 0
                 while True:
-                    pat,msg = self.receive_nowait(actor.CALL_PATTERN)
+                    pat,msg = self.receive(actor.CALL_PATTERN,timeout=0)
                     if pat and msg['method'] == 'get_cycle':
                         msg['address'].cast({'response':msg['call'], 
                                              'message':self.cycle})
@@ -163,6 +162,32 @@ class TestActor(unittest.TestCase):
         self.assertEquals(actor.spawn(ActiveActorMonitor).wait(), True)
 
   
+    def test_receive_times_out(self):
+        """Assert that calling with a timeout > 0.
+        """
+        class ActiveActor(actor.Actor):
+            def main(self):
+                self.touts = 0
+                while True:
+                    pat,msg = self.receive(actor.CALL_PATTERN,timeout=0.01)
+                    if pat is None:
+                        self.touts += 1
+                    else:
+                        if msg['method'] == 'die':
+                            msg['address'] | {'response':msg['call'],
+                                              'message':self.touts}
+                            return
+        
+        class ActiveActorMonitor(actor.Actor):
+            def main(self):
+                activea = actor.spawn(ActiveActor)
+                self.sleep(0.1)
+                touts = activea.die()
+                return touts > 3
+
+        self.assertEquals(actor.spawn(ActiveActorMonitor).wait(), True)
+
+
     def test_call(self):
         """Start an Actor that starts another Actor and then uses
         call on the Address. Assert that the parent gets a response

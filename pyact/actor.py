@@ -63,6 +63,10 @@ class DeadActor(ActorError):
     """
     pass
 
+class ReceiveTimeout(ActorError):
+    """Internal exception used to signal receive timeouts.
+    """
+    pass
 
 class RemoteAttributeError(ActorError, AttributeError):
     pass
@@ -413,38 +417,45 @@ class Actor(greenlet.greenlet):
                     return pattern, message
         return None,None
         
-    def receive(self, *patterns):
+    def receive(self, *patterns, **kw):
         """Select a message out of this Actor's mailbox. If patterns
         are given, only select messages which match these shapes.
         Otherwise, select the next message.
         """
-        if not patterns:
-            if not self._mailbox:
+        timeout = kw.get('timeout',None)
+            
+        if timeout == 0 :
+            if not patterns:
+                if self._mailbox:
+                    return {object: object}, self._mailbox.pop(0)
+                else:
+                    return None,None
+            return self._match_patterns(patterns)
+
+        if timeout is not None:
+            timer = eventlet.Timeout(kw['timeout'], ReceiveTimeout)
+
+        else:
+            timer = None
+
+        try:
+            if not patterns:
+                if not self._mailbox:
+                    self._waiting = True
+                    hubs.get_hub().switch()
+                if timer:
+                    timer.cancel()
+                return {object: object}, self._mailbox.pop(0)
+            while True:
+                matched_pat, matched_msg = self._match_patterns(patterns)
+                if matched_pat:
+                    if timer:
+                        timer.cancel()
+                    return matched_pat, matched_msg
                 self._waiting = True
                 hubs.get_hub().switch()
-            return {object: object}, self._mailbox.pop(0)
-
-        while True:
-            matched_pat, matched_msg = self._match_patterns(patterns)
-            if matched_pat:
-                return matched_pat, matched_msg
-            self._waiting = True
-            hubs.get_hub().switch()
-
-    def receive_nowait(self, *patterns):
-        """Select a message out of this Actor's mailbox. If patterns
-        are given, only select messages which match these shapes.
-        Otherwise, select the next message. 
-
-        Message is selected without waiting. If no message matches any
-        of the given patterns, then (None,None) is return as (pattern,message).
-        """
-        if not patterns:
-            if self._mailbox:
-                return {object: object}, self._mailbox.pop(0)
-            else:
-                return None,None
-        return self._match_patterns(patterns)
+        except ReceiveTimeout:
+            return (None,None)
 
     def respond(self, orig_message, response=None):
         if not shape.is_shaped(orig_message, CALL_PATTERN):
