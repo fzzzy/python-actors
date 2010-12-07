@@ -187,6 +187,20 @@ class TestActor(unittest.TestCase):
 
         self.assertEquals(actor.spawn(ActiveActorMonitor).wait(), True)
 
+    def test_receive_timeout_no_patterns(self):
+        """Assert that calling with a timeout > 0 and no patterns
+        """
+        class TimingOutActor(actor.Actor):
+            def main(self):
+                self.touts = 0
+                while True:
+                    self.receive(timeout=0.01)
+                    self.touts += 1
+                    if self.touts == 3:
+                        return True
+
+        self.assertEquals(actor.spawn(TimingOutActor).wait(), True)
+
 
     def test_call(self):
         """Start an Actor that starts another Actor and then uses

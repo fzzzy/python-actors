@@ -434,26 +434,27 @@ class Actor(greenlet.greenlet):
 
         if timeout is not None:
             timer = eventlet.Timeout(kw['timeout'], ReceiveTimeout)
-
         else:
             timer = None
-
         try:
-            if not patterns:
-                if not self._mailbox:
-                    self._waiting = True
-                    hubs.get_hub().switch()
-                if timer:
-                    timer.cancel()
-                return {object: object}, self._mailbox.pop(0)
+
             while True:
-                matched_pat, matched_msg = self._match_patterns(patterns)
-                if matched_pat:
+
+                if patterns:
+                    matched_pat, matched_msg = self._match_patterns(patterns)
+                elif self._mailbox:
+                    matched_pat, matched_msg = {object:object},self._mailbox.pop(0)
+                else:
+                    matched_pat = None
+
+                if matched_pat is not None:
                     if timer:
                         timer.cancel()
-                    return matched_pat, matched_msg
+                    return matched_pat,matched_msg
+
                 self._waiting = True
                 hubs.get_hub().switch()
+
         except ReceiveTimeout:
             return (None,None)
 
