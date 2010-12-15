@@ -271,7 +271,6 @@ class Address(object):
               addr.call('test') could be written as addr.test()
               
         """
-        print "getattr addr:",self.actor_id,"method",method
         f = lambda message=None,timeout=None : self.call(method,message,timeout)
         return f
         
