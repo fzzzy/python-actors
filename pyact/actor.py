@@ -143,13 +143,13 @@ def spawn_link(spawnable, *args, **kw):
 
 def connect(url):
     parsed = urlparse.urlparse(url)
-    if parsed.scheme == 'http':
+    if parsed[0] == 'http':
         klass = httplib.HTTPConnection
-    elif parsed.scheme == 'https':
+    elif parsed[0] == 'https':
         klass = httplib.HTTPSConnection
     else:
-        raise RuntimeError("Unsupported Scheme: %r" % (parsed.scheme, ))
-    host = parsed.netloc
+        raise RuntimeError("Unsupported Scheme: %r" % (parsed[0], ))
+    host = parsed[1]
     port = None
     if ':' in host:
         host, port = host.split(':', 1)
@@ -162,7 +162,7 @@ def spawn_remote(url, code_string):
     remote Actor.
     """
     parsed, conn = connect(url)
-    conn.request('PUT', parsed.path, code_string)
+    conn.request('PUT', parsed[2], code_string)
     resp = conn.getresponse()
     if resp.status == 202:
         return RemoteAddress(url)
@@ -271,6 +271,7 @@ class Address(object):
               addr.call('test') could be written as addr.test()
               
         """
+        print "getattr addr:",self.actor_id,"method",method
         f = lambda message=None,timeout=None : self.call(method,message,timeout)
         return f
         
@@ -294,7 +295,7 @@ class RemoteAddress(Address):
     def lookup(url):
         if url.startswith('http://') or url.startswith('https://'):
             parsed, conn = connect(url)
-            conn.request('HEAD', parsed.path)
+            conn.request('HEAD', parsed[2])
             resp = conn.getresponse()
             if resp.status != 404:
                 return RemoteAddress(url)
@@ -309,12 +310,12 @@ class RemoteAddress(Address):
         parsed, conn = connect(self._address)
         ## TODO how to get the address of the local http server? This does not give fully
         ## qualified return addresses
-        conn.request('POST', parsed.path, json.dumps(message, default=handle_address))
+        conn.request('POST', parsed[2], json.dumps(message, default=handle_address))
         resp = conn.getresponse()
 
     def kill(self):
         parsed, conn = connect(self._address)
-        conn.request('DELETE', parsed.path)
+        conn.request('DELETE', parsed[2])
         resp = conn.getresponse()
 
     def wait(self):
