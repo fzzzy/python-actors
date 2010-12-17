@@ -271,7 +271,6 @@ class Address(object):
               addr.call('test') could be written as addr.test()
               
         """
-        print "getattr addr:",self.actor_id,"method",method
         f = lambda message=None,timeout=None : self.call(method,message,timeout)
         return f
         
@@ -313,6 +312,43 @@ class RemoteAddress(Address):
         conn.request('POST', parsed[2], json.dumps(message, default=handle_address))
         resp = conn.getresponse()
 
+    def call(self, method, message=None, timeout=None):
+        """Send a message to the remote Actor this object addresses.
+        Wait for a result. If a timeout in seconds is passed, raise
+        eventlet.TimeoutError if no result is returned in less than the timeout.
+        """
+        message_id = str(uuid.uuid1())
+        parsed,conn = connect(self._address)
+        call_msg = {'remotecall':message_id,
+                    'method':method,
+                    'message':message,
+                    'timeout':timeout}
+        resp = conn.request('POST',parsed[2],json.dumps(call_msg,default=handle_address))
+        if timeout is None:
+            cancel = None
+        else:
+            ## Raise any TimeoutError to the caller so they can handle it
+            cancel = eventlet.Timeout(timeout, eventlet.TimeoutError)
+
+        resp = conn.getresponse()
+        stat = resp.status
+        rstr = resp.read()
+
+        if stat == 202:
+            rjson = json.loads(rstr,object_hook=generate_address)
+            return rjson['message']
+        elif stat == 404:
+            rjson = json.loads(rstr,object_hook=generate_address)
+            raise RemoteAttributeError(rjson['invalid_method'])
+        elif stat == 406:
+            rjson = json.loads(rstr,object_hook=generate_address)
+            raise RemoteException(rjson['exception'])
+        elif stat == 408:
+            rjson = json.loads(rstr,object_hook=generate_address)
+            raise eventlet.TimeoutError(rjson['timeout'])
+        else:
+            raise RemoteException("Unknown remote response "+str(stat))
+
     def kill(self):
         parsed, conn = connect(self._address)
         conn.request('DELETE', parsed[2])
@@ -324,7 +360,14 @@ class RemoteAddress(Address):
             "Need some sort of COMET protocol to implement this?")
 
 
-CALL_PATTERN = {'call': str, 'method': str, 'address': Address, 'message': object}
+CALL_PATTERN = {'call': str, 
+                'method': str, 
+                'address': Address, 
+                'message': object}
+REMOTE_CALL_PATTERN = {'remotecall':str,
+                       'method':str,
+                       'message':object,
+                       'timeout':object}
 RESPONSE_PATTERN = {'response': str, 'message': object}
 INVALID_METHOD_PATTERN = {'response': str, 'invalid_method': str}
 EXCEPTION_PATTERN = {'response': str, 'exception':object}
