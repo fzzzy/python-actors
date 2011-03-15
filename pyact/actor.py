@@ -24,6 +24,7 @@ import traceback
 import urlparse
 import uuid
 import weakref
+import base64
 
 try:
     import simplejson as json
@@ -168,19 +169,51 @@ def spawn_remote(url, code_string):
         return RemoteAddress(url)
     raise RuntimeError("Could not spawn remote Actor.")
 
-
-def handle_address(obj):
-    if isinstance(obj, Address):
-        return {'address': obj.actor_id}
+def handle_custom(obj):
+    if isinstance(obj, Address) or isinstance(obj,Binary):
+        return obj.to_json()
     raise TypeError(obj)
 
-
-def generate_address(obj):
-    if obj.keys() == ['address']:
-        return Actor.all_actors[obj['address']].address
+def generate_custom(obj):
+    address = Address.from_json(obj)
+    if address: 
+        return address
+    binary = Binary.from_json(obj)
+    if binary:
+        return binary
     return obj
 
+class Binary(object):
+    """A custom Binary object. Wrap binaries in this class before
+    sending them inside messages.
+    """
+    def __init__(self,value):
+        self.value=value
 
+    def to_json(self):
+        return {'_pyact_binary':base64.b64encode(self.value)}
+    
+    @classmethod
+    def from_json(cls,obj):
+        if obj.keys() == ['_pyact_binary']:
+            return cls(base64.b64decode(obj['_pyact_binary']))
+        return None
+    
+    def __hash__(self):
+        return hash(self.value)
+    
+    def __eq__(self,o):
+        if isinstance(o,Binary):
+            return self.value == o.value
+        return self.value == o
+
+    def __repr__(self):
+        return 'Binary('+self.value+')'
+
+    def __str__(self):
+        return repr(self)
+
+    
 class Address(object):
     """An Address is a reference to another Actor.  Any Actor which has an
     Address can asynchronously put a message in that Actor's mailbox. This is
@@ -189,6 +222,15 @@ class Address(object):
     """
     def __init__(self, actor):
         self.__actor = weakref.ref(actor)
+
+    def to_json(self):
+        return {'_pyact_address':self.actor_id}
+    
+    @classmethod
+    def from_json(cls,obj):
+        if obj.keys() == ['_pyact_address']:
+            return Actor.all_actors[obj['_pyact_address']].address
+        return None
 
     @staticmethod
     def lookup(name):
@@ -221,7 +263,7 @@ class Address(object):
         """
         ## TODO: Copy message or come up with some way of "freezing" message
         ## so that actors do not share mutable state.
-        self._actor._cast(json.dumps(message, default=handle_address))
+        self._actor._cast(json.dumps(message, default=handle_custom))
 
     def __or__(self, message):
         """Use Erlang-y syntax (| instead of !) to send messages.
@@ -309,7 +351,7 @@ class RemoteAddress(Address):
         parsed, conn = connect(self._address)
         ## TODO how to get the address of the local http server? This does not give fully
         ## qualified return addresses
-        conn.request('POST', parsed[2], json.dumps(message, default=handle_address))
+        conn.request('POST', parsed[2], json.dumps(message, default=handle_custom))
         resp = conn.getresponse()
 
     def call(self, method, message=None, timeout=None):
@@ -323,7 +365,7 @@ class RemoteAddress(Address):
                     'method':method,
                     'message':message,
                     'timeout':timeout}
-        resp = conn.request('POST',parsed[2],json.dumps(call_msg,default=handle_address))
+        resp = conn.request('POST',parsed[2],json.dumps(call_msg,default=handle_custom))
         if timeout is None:
             cancel = None
         else:
@@ -335,16 +377,16 @@ class RemoteAddress(Address):
         rstr = resp.read()
 
         if stat == 202:
-            rjson = json.loads(rstr,object_hook=generate_address)
+            rjson = json.loads(rstr,object_hook=generate_custom)
             return rjson['message']
         elif stat == 404:
-            rjson = json.loads(rstr,object_hook=generate_address)
+            rjson = json.loads(rstr,object_hook=generate_custom)
             raise RemoteAttributeError(rjson['invalid_method'])
         elif stat == 406:
-            rjson = json.loads(rstr,object_hook=generate_address)
+            rjson = json.loads(rstr,object_hook=generate_custom)
             raise RemoteException(rjson['exception'])
         elif stat == 408:
-            rjson = json.loads(rstr,object_hook=generate_address)
+            rjson = json.loads(rstr,object_hook=generate_custom)
             raise eventlet.TimeoutError(rjson['timeout'])
         else:
             raise RemoteException("Unknown remote response "+str(stat))
@@ -580,7 +622,7 @@ class Actor(greenlet.greenlet):
         
         Address uses this to insert a message into this Actor's mailbox.
         """
-        self._mailbox.append(json.loads(message, object_hook=generate_address))
+        self._mailbox.append(json.loads(message, object_hook=generate_custom))
         if self._waiting:
             hubs.get_hub().schedule_call_global(0,self.switch)
 

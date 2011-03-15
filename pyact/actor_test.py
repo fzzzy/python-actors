@@ -23,7 +23,7 @@ import unittest
 import eventlet
 from pyact import actor
 from pyact import exc
-
+import base64
 
 EXCEPTION_MARKER = "Child had an exception"
 
@@ -115,6 +115,8 @@ class TestActor(unittest.TestCase):
 
         result = actor.spawn(UnconditionalSupervisor).wait()
 
+
+        
     def test_cast_syntax_sugar(self):
         """Test | as cast operator.
         """
@@ -161,7 +163,33 @@ class TestActor(unittest.TestCase):
 
         self.assertEquals(actor.spawn(ActiveActorMonitor).wait(), True)
 
-  
+    def test_binary_class(self):
+        """Test binary blob creation and comparison
+        """
+        v = '\x00MM\xff'
+        b1 = actor.Binary(v)
+        b2 = actor.Binary(v)
+        assert b1.value == v
+        assert b1 == b2
+        assert b1 == v
+        assert b1.to_json() == {'_pyact_binary':base64.b64encode(v)}
+        assert actor.Binary.from_json({'_pyact_binary':base64.b64encode(v)}) == b1
+        
+    def test_binary_handling(self):
+        """Assert that handling of binary blobs in messages works
+        """
+        class BinaryReceiver(actor.Actor):
+            def main(self):
+                pat,msg = self.receive()
+                return msg
+        class BinarySupervisor(actor.Actor):
+            def main(self):
+                receiver = actor.spawn(BinaryReceiver)
+                receiver | actor.Binary('\x00\xffaa')
+                return receiver.wait()
+        self.assertEquals(actor.spawn(BinarySupervisor).wait(), actor.Binary('\x00\xffaa'))
+            
+
     def test_receive_times_out(self):
         """Assert that calling with a timeout > 0.
         """
