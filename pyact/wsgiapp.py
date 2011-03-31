@@ -77,14 +77,13 @@ class ActorApplication(object):
 
         try:
             body = env['wsgi.input'].read(int(env['CONTENT_LENGTH']))
-            def generate_address(obj):
+            def generate_custom(obj):
                 if obj.keys() == ['address']:
                     address = obj['address']
                     if address.startswith(local_address):
-                        new_obj = {'address': address[len(local_address):]}
-                        return actor.generate_address(new_obj)
-                return obj
-            msg = actor.json.loads(body, object_hook=generate_address)
+                        obj = {'address': address[len(local_address):]}
+                return actor.generate_custom(obj)
+            msg = actor.json.loads(body, object_hook=generate_custom)
         except Exception, e:
             traceback.print_exc()
             start_response('406 Not Acceptable', [('Content-type', 'text/plain')])
@@ -106,12 +105,7 @@ class ActorApplication(object):
             start_response('408 Request Timeout',[('Content-type','text/plain')])
             return actor.json.dumps({'timeout':msg['timeout']})+'\n'
 
-        def handle_address(obj):
-            if isinstance(obj, actor.Address):
-                return {'address': local_address + obj.actor_id}
-            raise TypeError(obj)
-
-        resp_str = actor.json.dumps(rmsg, default=handle_address)+'\n'
+        resp_str = actor.json.dumps(rmsg, default=_remote_handle_custom)+'\n'
         if shape.is_shaped(rmsg, RSP_PAT):
             start_response('202 Accepted',[('Content-type','application/json')])
         elif shape.is_shaped(rmsg, INV_PAT):
@@ -139,7 +133,6 @@ class ActorApplication(object):
         return "\n"
 
     def do_GET(self,path,env,start_response):
-
         if not path:
             start_response('200 OK', [('Content-type', 'text/plain')])
             return 'index\n'
@@ -154,15 +147,19 @@ class ActorApplication(object):
         start_response('200 OK', [('Content-type', 'application/json')])
         local_address = 'http://%s/' % (env['HTTP_HOST'], )
 
-        def handle_address(obj):
-            if isinstance(obj, actor.Address):
-                return {'address': local_address + obj.actor_id}
-            raise TypeError(obj)
-
         to_dump = dict([(x, y) for (x, y) in vars(old_actor).items() if not x.startswith('_')])
-        return actor.json.dumps(to_dump, default=handle_address) + '\n'
+        return actor.json.dumps(to_dump, default=_remote_handle_custom) + '\n'
         
 
+def _remote_handle_custom(obj):
+    """Custom json handling of remote addresses.
+    Falls back on actor.handle_custom to handle
+    Binary or other objects.
+    """
+    if isinstance(obj, actor.Address):
+        return {'address': local_address + obj.actor_id}
+    return actor.handle_custom(obj)
+    
 
 app = ActorApplication()
 
