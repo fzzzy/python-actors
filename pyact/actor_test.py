@@ -52,8 +52,10 @@ def exception(receive):
 
 
 class TestActor(unittest.TestCase):
+
     def test_basic_actor(self):
         self.assertRaises(NotImplementedError, actor.spawn(actor.Actor).wait)
+
 
     def test_wait(self):
         """Call spawn with a function that returns 2 + 2.
@@ -70,11 +72,13 @@ class TestActor(unittest.TestCase):
         result = actor.spawn(Supervisor).wait()
         self.assertEquals(result, 4)
 
+
     def test_wait_exception(self):
         """Call spawn with a function that raises an exception, and assert
         that calling wait raises the same exception.
         """
         self.assertRaises(RuntimeError, actor.spawn(exception).wait)
+
 
     def test_linked_exception(self):
         """Spawn an Actor which calls spawn_link with a function that
@@ -87,6 +91,7 @@ class TestActor(unittest.TestCase):
 
         result = actor.spawn(ExceptionSupervisor).wait()
         self.assertEquals(result, EXCEPTION_MARKER)
+
 
     def test_actor_linked_to_actor(self):
         """Start an Actor which calls spawn_link on another actor. When
@@ -104,6 +109,7 @@ class TestActor(unittest.TestCase):
 
         result = actor.spawn(ChildSupervisor).wait()
         self.assertEquals(result, "Hi There")
+
 
     def test_unconditional_receive(self):
         """Assert that calling receive with no arguments properly selects
@@ -134,6 +140,31 @@ class TestActor(unittest.TestCase):
         result = Requester.spawn().wait()
         self.assertEquals(result, "quux")
 
+
+    def test_cast_object_json_protocol(self):
+        """Test _as_json_obj() method for casting
+        """
+        class Msg1(object):
+            def __init__(self,x,addr):
+                self.x = x
+                self.addr = addr
+            def _as_json_obj(self):
+                return {'x':self.x,'addr':self.addr}
+            
+        class Replier(actor.Actor):
+            def main(self):
+                pat,msg = self.receive({'x':int,'addr':object})
+                msg['addr'] | "ok"
+        class Requester(actor.Actor):
+            def main(self):
+                repladdr = Replier.spawn()
+                repladdr | Msg1(91,self.address)
+                pat,msg = self.receive(str)
+                return msg
+        result = Requester.spawn().wait()
+        self.assertEquals(result, "ok")
+
+
     def test_receive_nowait(self):
         """Assert that calling receive with timeout = 0 works.
         """
@@ -163,6 +194,7 @@ class TestActor(unittest.TestCase):
 
         self.assertEquals(actor.spawn(ActiveActorMonitor).wait(), True)
 
+
     def test_binary_class(self):
         """Test binary blob creation and comparison
         """
@@ -175,6 +207,7 @@ class TestActor(unittest.TestCase):
         assert b1.to_json() == {'_pyact_binary':base64.b64encode(v)}
         assert actor.Binary.from_json({'_pyact_binary':base64.b64encode(v)}) == b1
         
+
     def test_binary_handling(self):
         """Assert that handling of binary blobs in messages works
         """
@@ -215,6 +248,7 @@ class TestActor(unittest.TestCase):
 
         self.assertEquals(actor.spawn(ActiveActorMonitor).wait(), True)
 
+
     def test_receive_timeout_no_patterns(self):
         """Assert that calling with a timeout > 0 and no patterns
         """
@@ -254,6 +288,7 @@ class TestActor(unittest.TestCase):
 
         self.assertEquals(actor.spawn(TimeoutCallParent).wait(), "Hi There")
 
+
     def test_call_response_method(self):
         """Start an Actor that starts another Actor and then uses
         call on the Address. Response is send back using the response() method. 
@@ -270,6 +305,7 @@ class TestActor(unittest.TestCase):
                 return actor.spawn(CallChild).call('method')
         self.assertEquals(actor.spawn(CallParent).wait(), 'Hi There')
 
+
     def test_call_getattr(self):
         """Test addr.method(...) call pattern
         """
@@ -284,6 +320,7 @@ class TestActor(unittest.TestCase):
                 return actor.spawn(CallChild).method()
         self.assertEquals(actor.spawn(CallParent).wait(), 'my response')
             
+
     def test_call_invalid_method(self):
         """Start an Actor that starts another Actor and then
         uses call on the Address but using an invalid method. An
@@ -298,6 +335,7 @@ class TestActor(unittest.TestCase):
                 return actor.spawn(CallChild).call('invalmeth')
         self.assertRaises(actor.RemoteAttributeError, actor.spawn(CallParent).wait)
         
+
     def test_call_with_remote_exception(self):
         """Start an Actor that starts another actor and calls a method
         on it. The first actor will respond with an exception.
@@ -333,6 +371,7 @@ class TestActor(unittest.TestCase):
 
         self.assertRaises(eventlet.TimeoutError, actor.spawn(TimeoutParent).wait)
 
+
     def test_dead_actor(self):
         class DeadTest(actor.Actor):
             def main(self):
@@ -341,6 +380,7 @@ class TestActor(unittest.TestCase):
                 child.cast({'hello': 'there'})
 
         self.assertRaises(actor.DeadActor, actor.spawn(DeadTest).wait)
+
 
     def test_manual_link(self):
         class LinkTest(actor.Actor):
@@ -352,6 +392,7 @@ class TestActor(unittest.TestCase):
                     {'exit': object, 'address': object},
                     {'exception': object, 'address': object})
         actor.spawn(LinkTest).wait()
+
 
     def test_kill(self):
         def forever(receive):
@@ -369,6 +410,7 @@ class TestActor(unittest.TestCase):
                 return address.wait()
 
         self.assertRaises(actor.Killed, actor.spawn(KillTest).wait)
+
 
     def test_wait_all(self):
         class WaitAll(actor.Actor):
@@ -391,6 +433,7 @@ class TestActor(unittest.TestCase):
         result2 = [x.get('exit') for x in result2]
         self.assertEquals([1,2,3], result1)
         self.assertEquals([1,2,3], result2)
+
 
     def test_build_call_pattern(self):
         

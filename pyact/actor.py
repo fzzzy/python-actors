@@ -261,8 +261,12 @@ class Address(object):
     def cast(self, message):
         """Send a message to the Actor this object addresses.
         """
-        ## TODO: Copy message or come up with some way of "freezing" message
-        ## so that actors do not share mutable state.
+        ## If messages are any Python objects (not necessarily dicts), 
+        ## but they specify the _as_json_obj() method, that method 
+        ## will be called to get  json object representation of that
+        ## object.
+        if hasattr(message,'_as_json_obj'):
+            message = message._as_json_obj()
         self._actor._cast(json.dumps(message, default=handle_custom))
 
     def __or__(self, message):
@@ -351,6 +355,13 @@ class RemoteAddress(Address):
         parsed, conn = connect(self._address)
         ## TODO how to get the address of the local http server? This does not give fully
         ## qualified return addresses
+
+        ## If messages are any Python objects (not necessarily dicts), 
+        ## but they specify the _as_json_obj() method, that method 
+        ## will be called to get  json object representation of that
+        ## object.
+        if hasattr(message,'_as_json_obj'):
+            message = message._as_json_obj()
         conn.request('POST', parsed[2], json.dumps(message, default=handle_custom))
         resp = conn.getresponse()
 
