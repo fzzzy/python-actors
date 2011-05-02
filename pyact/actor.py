@@ -533,26 +533,29 @@ class Actor(greenlet.greenlet):
         else:
             timer = None
         try:
+            try:
 
-            while True:
+                while True:
 
-                if patterns:
-                    matched_pat, matched_msg = self._match_patterns(patterns)
-                elif self._mailbox:
-                    matched_pat, matched_msg = {object:object},self._mailbox.pop(0)
-                else:
-                    matched_pat = None
+                    if patterns:
+                        matched_pat, matched_msg = self._match_patterns(patterns)
+                    elif self._mailbox:
+                        matched_pat, matched_msg = {object:object},self._mailbox.pop(0)
+                    else:
+                        matched_pat = None
 
-                if matched_pat is not None:
-                    if timer:
-                        timer.cancel()
-                    return matched_pat,matched_msg
+                    if matched_pat is not None:
+                        if timer:
+                            timer.cancel()
+                        return matched_pat,matched_msg
 
-                self._waiting = True
-                hubs.get_hub().switch()
+                    self._waiting = True
+                    hubs.get_hub().switch()
 
-        except ReceiveTimeout:
-            return (None,None)
+            except ReceiveTimeout:
+                return (None,None)
+        finally:
+            self._waiting = False
 
     def respond(self, orig_message, response=None):
         if not shape.is_shaped(orig_message, CALL_PATTERN):
