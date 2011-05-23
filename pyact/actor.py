@@ -458,6 +458,7 @@ class Actor(greenlet.greenlet):
     simply call receive with no patterns.
     """
     _waiting = False
+    _already_scheduled_switch = False
     _mailbox = lazy_property('_p_mailbox', lambda self: [])
     _links = lazy_property('_p_links', lambda self: [])
     _exit_links = lazy_property('_p_exit_links', lambda self: [])
@@ -532,30 +533,33 @@ class Actor(greenlet.greenlet):
             timer = eventlet.Timeout(kw['timeout'], ReceiveTimeout)
         else:
             timer = None
+
         try:
-            try:
 
-                while True:
+            while True:
 
-                    if patterns:
-                        matched_pat, matched_msg = self._match_patterns(patterns)
-                    elif self._mailbox:
-                        matched_pat, matched_msg = {object:object},self._mailbox.pop(0)
-                    else:
-                        matched_pat = None
+                if patterns:
+                    matched_pat, matched_msg = self._match_patterns(patterns)
+                elif self._mailbox:
+                    matched_pat, matched_msg = {object:object},self._mailbox.pop(0)
+                else:
+                    matched_pat = None
 
-                    if matched_pat is not None:
-                        if timer:
-                            timer.cancel()
-                        return matched_pat,matched_msg
+                if matched_pat is not None:
+                    if timer:
+                        timer.cancel()
+                    return matched_pat,matched_msg
 
-                    self._waiting = True
+                self._waiting = True
+                self._already_scheduled_switch = False
+                try:
                     hubs.get_hub().switch()
+                finally:
+                    self._waiting = False
 
-            except ReceiveTimeout:
-                return (None,None)
-        finally:
-            self._waiting = False
+        except ReceiveTimeout:
+            return (None,None)
+
 
     def respond(self, orig_message, response=None):
         if not shape.is_shaped(orig_message, CALL_PATTERN):
@@ -637,9 +641,9 @@ class Actor(greenlet.greenlet):
         Address uses this to insert a message into this Actor's mailbox.
         """
         self._mailbox.append(json.loads(message, object_hook=generate_custom))
-        if self._waiting:
+        if self._waiting and not self._already_scheduled_switch:
+            self._already_scheduled_switch = True
             hubs.get_hub().schedule_call_global(0,self.switch)
-
 
 class Server(Actor):
     """An actor which responds to the call protocol by looking for the
