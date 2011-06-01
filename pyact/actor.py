@@ -26,6 +26,7 @@ import uuid
 import weakref
 import base64
 
+
 try:
     import simplejson as json
 except ImportError:
@@ -457,8 +458,8 @@ class Actor(greenlet.greenlet):
     (matched_pattern, message). To receive any message which is in the mailbox,
     simply call receive with no patterns.
     """
-    _waiting = False
-    _already_scheduled_switch = False
+    _wevent = None
+    _already_notified = False
     _mailbox = lazy_property('_p_mailbox', lambda self: [])
     _links = lazy_property('_p_links', lambda self: [])
     _exit_links = lazy_property('_p_exit_links', lambda self: [])
@@ -550,12 +551,16 @@ class Actor(greenlet.greenlet):
                         timer.cancel()
                     return matched_pat,matched_msg
 
-                self._waiting = True
-                self._already_scheduled_switch = False
+                self._wevent = event.Event()
+                self._already_notified = False
                 try:
-                    hubs.get_hub().switch()
+                    # wait until at least one message is sent
+                    # or timeout occurs
+                    self._wevent.wait()
                 finally:
-                    self._waiting = False
+                    self._wevent = None
+                    self._already_notified = False
+                    
 
         except ReceiveTimeout:
             return (None,None)
@@ -641,9 +646,9 @@ class Actor(greenlet.greenlet):
         Address uses this to insert a message into this Actor's mailbox.
         """
         self._mailbox.append(json.loads(message, object_hook=generate_custom))
-        if self._waiting and not self._already_scheduled_switch:
-            self._already_scheduled_switch = True
-            hubs.get_hub().schedule_call_global(0,self.switch)
+        if self._wevent and not self._already_notified:
+            self._already_notified = True
+            self._wevent.send(None)
 
 class Server(Actor):
     """An actor which responds to the call protocol by looking for the
