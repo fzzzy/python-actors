@@ -2,12 +2,6 @@ import eventlet
 from eventlet.green import socket as _gsocket
 from pyact import actor
 
-import syslog
-
-def log(*args):
-    msg = [str(a) for a in args]
-    syslog.syslog(' '.join(msg))
-
 # Active socket message interface. These are sent to the controlling
 # actor:
 #
