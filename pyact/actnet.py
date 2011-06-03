@@ -115,7 +115,6 @@ class _actsock(object):
         self._gthread = eventlet.spawn(self._tcp_poller,peername)
         
     def _udp_poller(self):
-        log("UDP poller started for",self._sock,self._actaddr)
         try:
             while True:
                 (data,addr)=self._sock.recvfrom(self._recvmax)
@@ -123,7 +122,6 @@ class _actsock(object):
                 try:
                     actobj = self._actaddr._actor
                 except (actor.DeadActor, actor.Killed):
-                    log("UDP poller exiting since owner is dead")
                     break
                 msg = {'actnet':UDP,'host':host,'port':port,'data':data}
                 actobj._cast(msg,as_json=False)
@@ -131,10 +129,9 @@ class _actsock(object):
                     self._active = False
                     break
         except eventlet.greenlet.GreenletExit:
-            log("UDP poller killed")
+            pass
             
     def _tcp_poller(self,peername):
-        log("TCP poller started for",self._sock,self._actaddr)
         host,port = peername[:2]
         try:
             done = False
@@ -147,7 +144,6 @@ class _actsock(object):
                 try:
                     actobj = self._actaddr._actor
                 except (actor.DeadActor, actor.Killed):
-                    log("UDP poller exiting since owner is dead")
                     break
                 if error is None:
                     if len(data)!=0:
@@ -163,8 +159,7 @@ class _actsock(object):
                     self._active = False
                     break
         except eventlet.greenlet.GreenletExit:
-            log("TCP poller killed")
-            
+            pass
 
 
 def _sockfam(s):

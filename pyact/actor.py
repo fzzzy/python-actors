@@ -459,7 +459,6 @@ class Actor(greenlet.greenlet):
     simply call receive with no patterns.
     """
     _wevent = None
-    _already_notified = False
     _mailbox = lazy_property('_p_mailbox', lambda self: [])
     _links = lazy_property('_p_links', lambda self: [])
     _exit_links = lazy_property('_p_exit_links', lambda self: [])
@@ -521,7 +520,6 @@ class Actor(greenlet.greenlet):
         Otherwise, select the next message.
         """
         timeout = kw.get('timeout',None)
-            
         if timeout == 0 :
             if not patterns:
                 if self._mailbox:
@@ -529,39 +527,28 @@ class Actor(greenlet.greenlet):
                 else:
                     return None,None
             return self._match_patterns(patterns)
-
         if timeout is not None:
             timer = eventlet.Timeout(kw['timeout'], ReceiveTimeout)
         else:
             timer = None
-
         try:
-
             while True:
-
                 if patterns:
                     matched_pat, matched_msg = self._match_patterns(patterns)
                 elif self._mailbox:
                     matched_pat, matched_msg = {object:object},self._mailbox.pop(0)
                 else:
                     matched_pat = None
-
                 if matched_pat is not None:
                     if timer:
                         timer.cancel()
                     return matched_pat,matched_msg
-
                 self._wevent = event.Event()
-                self._already_notified = False
                 try:
-                    # wait until at least one message is sent
-                    # or timeout occurs
+                    # wait until at least one message or timeout
                     self._wevent.wait()
                 finally:
                     self._wevent = None
-                    self._already_notified = False
-                    
-
         except ReceiveTimeout:
             return (None,None)
 
@@ -640,15 +627,17 @@ class Actor(greenlet.greenlet):
             link.cast({'address': self.address, 'exit': result})
         self.all_actors.pop(self.actor_id)
 
-    def _cast(self, message):
+    def _cast(self, message, as_json=True):
         """For internal use.
         
         Address uses this to insert a message into this Actor's mailbox.
         """
-        self._mailbox.append(json.loads(message, object_hook=generate_custom))
-        if self._wevent and not self._already_notified:
-            self._already_notified = True
+        if as_json:
+            message = json.loads(message, object_hook=generate_custom)
+        self._mailbox.append(message)
+        if self._wevent and not self._wevent.has_result():
             self._wevent.send(None)
+
 
 class Server(Actor):
     """An actor which responds to the call protocol by looking for the
